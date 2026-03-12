@@ -1,108 +1,96 @@
-import { describe, it, expect, vi } from 'vitest';
-import {
-  initState, loadState, onJoin, onLeave, tick,
-} from '../adapter.js';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const raw = JSON.parse(readFileSync(join(__dirname, '../schema.json'), 'utf-8'));
-const worldConfig = { raw };
+import { describe, it, expect } from 'vitest';
+import { initState, buildScene, processAction, onJoin, onLeave } from '../adapter.js';
 
 describe('initState', () => {
-  it('returns valid initial state with required fields', () => {
-    const state = initState(worldConfig);
-    expect(state.log).toEqual([]);
-    expect(state.clock).toEqual({ tick: 0 });
-    expect(state.bots).toEqual([]);
-    expect(state.villageCosts).toEqual({});
-    expect(state.remoteParticipants).toEqual({});
+  it('returns world-specific state only', () => {
+    const state = initState();
+    expect(state).toEqual({ log: [] });
   });
 });
 
-describe('loadState', () => {
-  it('loads saved state', () => {
-    const saved = {
-      log: [{ action: 'say', message: 'hello' }],
-      clock: { tick: 5 },
-      bots: ['alice'],
-      villageCosts: { alice: 0.1 },
-      remoteParticipants: { alice: { displayName: 'Alice' } },
-    };
-    const state = loadState(saved, worldConfig);
-    expect(state.log).toHaveLength(1);
-    expect(state.clock.tick).toBe(5);
-    expect(state.bots).toEqual(['alice']);
+describe('buildScene', () => {
+  it('renders alone scene', () => {
+    const state = initState();
+    const scene = buildScene(
+      { name: 'alice', displayName: 'Alice' },
+      [{ name: 'alice', displayName: 'Alice' }],
+      state,
+    );
+    expect(scene).toContain('The Rusty Flagon');
+    expect(scene).toContain('tavern is empty');
+    expect(scene).toContain('barkeep polishes');
   });
 
-  it('handles missing fields with defaults', () => {
-    const state = loadState({}, worldConfig);
-    expect(state.log).toEqual([]);
-    expect(state.clock).toEqual({ tick: 0 });
-    expect(state.bots).toEqual([]);
+  it('renders scene with others and log', () => {
+    const state = {
+      log: [{ action: 'say', displayName: 'Bob', message: 'hello!' }],
+    };
+    const allBots = [
+      { name: 'alice', displayName: 'Alice' },
+      { name: 'bob', displayName: 'Bob' },
+    ];
+    const scene = buildScene(allBots[0], allBots, state);
+    expect(scene).toContain('**At the tables:** Bob');
+    expect(scene).toContain('**Bob:** hello!');
+  });
+});
+
+describe('processAction', () => {
+  const bot = { name: 'alice', displayName: 'Alice' };
+  const state = {
+    _bots: [
+      { name: 'alice', displayName: 'Alice' },
+      { name: 'bob', displayName: 'Bob' },
+    ],
+    log: [],
+  };
+
+  it('processes say', () => {
+    const result = processAction(bot, { tool: 'tavern_say', params: { message: 'hi' } }, state);
+    expect(result).toEqual({ action: 'say', message: 'hi' });
+  });
+
+  it('processes toast', () => {
+    const result = processAction(bot, { tool: 'tavern_toast', params: { message: 'cheers' } }, state);
+    expect(result).toEqual({ action: 'toast', message: 'cheers' });
+  });
+
+  it('processes arm_wrestle with existing target', () => {
+    const result = processAction(bot, { tool: 'tavern_arm_wrestle', params: { target: 'bob' } }, state);
+    expect(result.action).toBe('arm_wrestle');
+    expect(result.target).toBe('bob');
+    expect(result.message).toContain('Alice');
+    expect(result.message).toContain('Bob');
+  });
+
+  it('handles arm_wrestle with missing target', () => {
+    const result = processAction(bot, { tool: 'tavern_arm_wrestle', params: { target: 'nobody' } }, state);
+    expect(result.action).toBe('say');
+    expect(result.message).toContain("don't seem to be here");
+  });
+
+  it('returns null for unknown action', () => {
+    const result = processAction(bot, { tool: 'unknown', params: {} }, state);
+    expect(result).toBeNull();
   });
 });
 
 describe('onJoin', () => {
-  it('appends to log and returns join event', async () => {
-    const state = initState(worldConfig);
-    state.bots.push('bob');
-    const events = await onJoin(state, 'bob', 'Bob', worldConfig);
+  it('appends join entry to log', () => {
+    const state = initState();
+    onJoin(state, 'alice', 'Alice');
     expect(state.log).toHaveLength(1);
     expect(state.log[0].action).toBe('join');
-    expect(events).toHaveLength(1);
-    expect(events[0].type).toBe('tavern_join');
+    expect(state.log[0].message).toContain('pushes open');
   });
 });
 
 describe('onLeave', () => {
-  it('appends to log and returns leave event', () => {
-    const state = initState(worldConfig);
-    const events = onLeave(state, 'bob', 'Bob');
+  it('appends leave entry to log', () => {
+    const state = initState();
+    onLeave(state, 'alice', 'Alice');
     expect(state.log).toHaveLength(1);
-    expect(events).toHaveLength(1);
-    expect(events[0].type).toBe('tavern_leave');
-  });
-});
-
-describe('tick', () => {
-  it('skips when no participants', async () => {
-    const state = initState(worldConfig);
-    const saveState = vi.fn();
-    await tick({
-      state, worldConfig,
-      participants: new Map(),
-      sendSceneRemote: vi.fn(),
-      accumulateResponseCost: vi.fn(),
-      broadcastEvent: vi.fn(),
-      saveState,
-    });
-    expect(saveState).toHaveBeenCalled();
-  });
-
-  it('sends scene and processes actions', async () => {
-    const state = initState(worldConfig);
-    state.bots.push('alice');
-    state.remoteParticipants.alice = { displayName: 'Alice' };
-
-    const broadcastEvent = vi.fn();
-    const sendSceneRemote = vi.fn().mockResolvedValue({
-      actions: [{ tool: 'tavern_say', params: { message: 'hello!' } }],
-    });
-
-    await tick({
-      state, worldConfig,
-      participants: new Map([['alice', { displayName: 'Alice' }]]),
-      sendSceneRemote,
-      accumulateResponseCost: vi.fn(),
-      broadcastEvent,
-      saveState: vi.fn(),
-    });
-
-    expect(sendSceneRemote).toHaveBeenCalledWith('alice', 'tavern', expect.objectContaining({ scene: expect.any(String) }));
-    expect(state.log).toHaveLength(1);
-    expect(state.log[0].action).toBe('say');
-    expect(broadcastEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'tavern_say' }));
+    expect(state.log[0].action).toBe('leave');
+    expect(state.log[0].message).toContain('finishes their drink');
   });
 });

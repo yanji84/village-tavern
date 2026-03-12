@@ -5,103 +5,16 @@
  * and challenge each other to arm-wrestling matches (random outcome).
  */
 
-const LOG_CAP = 50;
+// --- State (required) ---
 
-// --- State lifecycle (required) ---
-
-export function initState(worldConfig) {
-  return {
-    log: [],
-    clock: { tick: 0 },
-    bots: [],
-    villageCosts: {},
-    remoteParticipants: {},
-  };
+export function initState() {
+  return { log: [] };
 }
 
-export function loadState(raw, worldConfig) {
-  return {
-    log: raw.log || [],
-    clock: raw.clock || { tick: 0 },
-    bots: raw.bots || [],
-    villageCosts: raw.villageCosts || {},
-    remoteParticipants: raw.remoteParticipants || {},
-  };
-}
+// --- Scene (required) ---
 
-// --- Hooks (optional) ---
-
-export async function onJoin(state, botName, displayName, worldConfig) {
-  const entry = { bot: botName, displayName, action: 'join', message: `${displayName} pushes open the tavern door and takes a seat.`, tick: state.clock.tick, timestamp: new Date().toISOString() };
-  state.log.push(entry);
-  return [{ type: 'tavern_join', ...entry }];
-}
-
-export function onLeave(state, botName, displayName) {
-  const entry = { bot: botName, displayName, action: 'leave', message: `${displayName} finishes their drink and leaves the tavern.`, tick: state.clock.tick, timestamp: new Date().toISOString() };
-  state.log.push(entry);
-  return [{ type: 'tavern_leave', ...entry }];
-}
-
-// --- Tick (required) ---
-
-export async function tick(ctx) {
-  const { state, worldConfig, participants, sendSceneRemote,
-    accumulateResponseCost, broadcastEvent, saveState,
-    SCENE_HISTORY_CAP } = ctx;
-
-  if (participants.size === 0) {
-    await saveState();
-    return;
-  }
-
-  const botsHere = [...participants.entries()].map(([name, p]) => ({
-    name, displayName: p.displayName,
-  }));
-
-  const recentLog = state.log.slice(-(SCENE_HISTORY_CAP || 10));
-  const schema = worldConfig.raw;
-
-  // Send scene to each bot in parallel
-  const results = await Promise.all(botsHere.map(async (bot) => {
-    const scene = buildScene(bot, botsHere, recentLog, schema);
-    const payload = {
-      scene,
-      tools: schema.toolSchemas || [],
-      systemPrompt: schema.systemPrompt || '',
-      allowedReads: schema.allowedReads || [],
-      maxActions: schema.maxActions || 2,
-    };
-    const response = await sendSceneRemote(bot.name, 'tavern', payload);
-    accumulateResponseCost(bot.name, response);
-    return { bot, response };
-  }));
-
-  // Process responses
-  const ts = new Date().toISOString();
-  for (const { bot, response } of results) {
-    if (!response || response._error || !response.actions) continue;
-    for (const action of response.actions) {
-      const entry = processAction(bot, action, state, ts);
-      if (entry) {
-        state.log.push(entry);
-        broadcastEvent({ type: `tavern_${entry.action}`, ...entry });
-      }
-    }
-  }
-
-  // Cap the log
-  if (state.log.length > LOG_CAP) {
-    state.log = state.log.slice(-LOG_CAP);
-  }
-
-  await saveState();
-}
-
-// --- Internal helpers ---
-
-function buildScene(bot, botsHere, recentLog, schema) {
-  const others = botsHere.filter(b => b.name !== bot.name);
+export function buildScene(bot, allBots, state) {
+  const others = allBots.filter(b => b.name !== bot.name);
   const lines = [];
 
   lines.push('## Location: The Rusty Flagon');
@@ -115,10 +28,11 @@ function buildScene(bot, botsHere, recentLog, schema) {
   lines.push('');
 
   lines.push('### Recent happenings');
-  if (recentLog.length === 0) {
+  const recent = state.log.slice(-10);
+  if (recent.length === 0) {
     lines.push("It's quiet. The barkeep polishes a mug and waits.");
   } else {
-    for (const entry of recentLog) {
+    for (const entry of recent) {
       if (entry.action === 'say') {
         lines.push(`- **${entry.displayName}:** ${entry.message}`);
       } else if (entry.action === 'toast') {
@@ -130,58 +44,66 @@ function buildScene(bot, botsHere, recentLog, schema) {
       }
     }
   }
-  lines.push('');
-
-  lines.push('### Available actions');
-  for (const tool of (schema.toolSchemas || [])) {
-    lines.push(`- **${tool.name}**: ${tool.description}`);
-  }
-  lines.push('');
-  lines.push('What do you do?');
 
   return lines.join('\n');
 }
 
-function processAction(bot, action, state, timestamp) {
-  const tick = state.clock.tick;
+// --- Actions (required) ---
 
+export function processAction(bot, action, state) {
   if (action.tool === 'tavern_say' && action.params?.message) {
     return {
-      bot: bot.name, displayName: bot.displayName,
-      action: 'say', message: action.params.message,
-      tick, timestamp,
+      action: 'say',
+      message: action.params.message,
     };
   }
 
   if (action.tool === 'tavern_toast' && action.params?.message) {
     return {
-      bot: bot.name, displayName: bot.displayName,
-      action: 'toast', message: action.params.message,
-      tick, timestamp,
+      action: 'toast',
+      message: action.params.message,
     };
   }
 
   if (action.tool === 'tavern_arm_wrestle' && action.params?.target) {
     const target = action.params.target;
-    const targetExists = state.bots.includes(target);
-    if (!targetExists) {
+    const targetBot = state._bots.find(b => b.name === target);
+    if (!targetBot) {
       return {
-        bot: bot.name, displayName: bot.displayName,
-        action: 'say', message: `*looks around for ${target}* ...they don't seem to be here.`,
-        tick, timestamp,
+        action: 'say',
+        message: `*looks around for ${target}* ...they don't seem to be here.`,
       };
     }
     const win = Math.random() > 0.5;
-    const targetDisplay = state.remoteParticipants[target]?.displayName || target;
     const message = win
-      ? `**${bot.displayName}** challenges **${targetDisplay}** to arm-wrestle — and wins! The table shakes as ${bot.displayName} slams ${targetDisplay}'s hand down.`
-      : `**${bot.displayName}** challenges **${targetDisplay}** to arm-wrestle — and loses! ${targetDisplay} grins and flexes.`;
+      ? `**${bot.displayName}** challenges **${targetBot.displayName}** to arm-wrestle — and wins! The table shakes as ${bot.displayName} slams ${targetBot.displayName}'s hand down.`
+      : `**${bot.displayName}** challenges **${targetBot.displayName}** to arm-wrestle — and loses! ${targetBot.displayName} grins and flexes.`;
     return {
-      bot: bot.name, displayName: bot.displayName,
-      action: 'arm_wrestle', message, target,
-      tick, timestamp,
+      action: 'arm_wrestle',
+      message,
+      target,
     };
   }
 
   return null;
+}
+
+// --- Hooks (optional) ---
+
+export function onJoin(state, botName, displayName) {
+  state.log.push({
+    action: 'join',
+    bot: botName,
+    displayName,
+    message: `${displayName} pushes open the tavern door and takes a seat.`,
+  });
+}
+
+export function onLeave(state, botName, displayName) {
+  state.log.push({
+    action: 'leave',
+    bot: botName,
+    displayName,
+    message: `${displayName} finishes their drink and leaves the tavern.`,
+  });
 }
