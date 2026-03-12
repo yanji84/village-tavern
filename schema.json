@@ -4,27 +4,10 @@
   "description": "A lively medieval tavern where travelers gather to drink, chat, and arm-wrestle.",
   "version": 1,
 
-  "locations": {
-    "tavern": {
-      "name": "The Rusty Flagon",
-      "flavor": "A warm tavern with rough wooden tables, a roaring hearth, and the smell of ale in the air.",
-      "purpose": "The main gathering hall — everyone drinks and talks here."
-    }
-  },
+  "systemPrompt": "You're a traveler sitting in a medieval tavern called The Rusty Flagon. Chat with others, propose toasts, or challenge someone to arm-wrestle. Stay in character. Keep responses natural and brief.",
 
-  "spawnLocation": "tavern",
-
-  "phases": {
-    "afternoon": { "description": "Sunlight streams through dusty windows. A few patrons nurse their drinks." },
-    "evening":   { "description": "The tavern fills up. Laughter and clinking mugs echo off the stone walls." },
-    "night":     { "description": "Late night. The fire is embers, and only the hardy remain." }
-  },
-
-  "tools": [
-    { "id": "tavern_say", "description": "Say something to the tavern" },
-    { "id": "tavern_toast", "description": "Raise your mug and propose a toast" },
-    { "id": "tavern_arm_wrestle", "description": "Challenge someone to an arm-wrestling match" }
-  ],
+  "allowedReads": ["memory/tavern.md"],
+  "maxActions": 2,
 
   "toolSchemas": [
     {
@@ -69,26 +52,5 @@
         "required": ["target"]
       }
     }
-  ],
-
-  "locationTools": {
-    "tavern": ["tavern_say", "tavern_toast", "tavern_arm_wrestle"]
-  },
-
-  "defaultLocationTools": ["tavern_say", "tavern_toast", "tavern_arm_wrestle"],
-
-  "sceneLabels": {
-    "location": "Location",
-    "aloneHere": "The tavern is empty. You sit alone with your drink.",
-    "presentHere": "At the tables",
-    "recentConversation": "Recent happenings",
-    "noConversation": "It's quiet. The barkeep polishes a mug and waits.",
-    "availableActions": "Available actions",
-    "yourTurn": "What do you do?"
-  },
-
-  "systemPrompt": "You're a traveler sitting in a medieval tavern called The Rusty Flagon. Chat with others, propose toasts, or challenge someone to arm-wrestle. Stay in character. Keep responses natural and brief.",
-
-  "allowedReads": ["memory/tavern.md"],
-  "maxActions": 2
+  ]
 }

@@ -87,19 +87,19 @@ export async function tick(ctx) {
   }));
 
   const recentLog = state.log.slice(-(SCENE_HISTORY_CAP || 10));
-  const labels = worldConfig.sceneLabels;
+  const schema = worldConfig.raw;
 
   // Send scene to each bot in parallel, tracking per-bot delivery for dev console
   const botDetails = [];
   const results = await Promise.all(botsHere.map(async (bot) => {
-    const scene = buildScene(bot, botsHere, recentLog, labels, worldConfig);
-    const tools = worldConfig.raw.toolSchemas || [];
+    const scene = buildScene(bot, botsHere, recentLog, schema);
+    const tools = schema.toolSchemas || [];
     const payload = {
       scene,
       tools,
-      systemPrompt: worldConfig.raw.systemPrompt || '',
-      allowedReads: worldConfig.raw.allowedReads || [],
-      maxActions: worldConfig.raw.maxActions || 2,
+      systemPrompt: schema.systemPrompt || '',
+      allowedReads: schema.allowedReads || [],
+      maxActions: schema.maxActions || 2,
     };
     const payloadJson = JSON.stringify(payload);
     const detail = {
@@ -169,6 +169,7 @@ export const fastTick = null;
 // --- Observer ---
 
 export function buildSSEInitPayload(state, participants, worldConfig, { nextTickAt, tickIntervalMs }) {
+  const schema = worldConfig.raw;
   return {
     type: 'init',
     worldType: 'social',
@@ -176,10 +177,10 @@ export function buildSSEInitPayload(state, participants, worldConfig, { nextTick
     nextTickAt,
     tickIntervalMs,
     world: {
-      id: worldConfig.raw.id,
-      name: worldConfig.raw.name,
-      description: worldConfig.raw.description,
-      version: worldConfig.raw.version,
+      id: schema.id,
+      name: schema.name,
+      description: schema.description,
+      version: schema.version,
     },
     bots: state.bots.map(name => ({
       name,
@@ -197,23 +198,23 @@ export function isEventForWorld(event) {
 
 // --- Internal helpers ---
 
-function buildScene(bot, botsHere, recentLog, labels, worldConfig) {
+function buildScene(bot, botsHere, recentLog, schema) {
   const others = botsHere.filter(b => b.name !== bot.name);
   const lines = [];
 
-  lines.push(`## ${labels.location}: The Rusty Flagon`);
+  lines.push('## Location: The Rusty Flagon');
   lines.push('');
 
   if (others.length === 0) {
-    lines.push(labels.aloneHere);
+    lines.push('The tavern is empty. You sit alone with your drink.');
   } else {
-    lines.push(`**${labels.presentHere}:** ${others.map(b => b.displayName).join(', ')}`);
+    lines.push(`**At the tables:** ${others.map(b => b.displayName).join(', ')}`);
   }
   lines.push('');
 
-  lines.push(`### ${labels.recentConversation}`);
+  lines.push('### Recent happenings');
   if (recentLog.length === 0) {
-    lines.push(labels.noConversation);
+    lines.push("It's quiet. The barkeep polishes a mug and waits.");
   } else {
     for (const entry of recentLog) {
       if (entry.action === 'say') {
@@ -229,12 +230,12 @@ function buildScene(bot, botsHere, recentLog, labels, worldConfig) {
   }
   lines.push('');
 
-  lines.push(`### ${labels.availableActions}`);
-  for (const tool of (worldConfig.raw.tools || [])) {
-    lines.push(`- **${tool.id}**: ${tool.description}`);
+  lines.push('### Available actions');
+  for (const tool of (schema.toolSchemas || [])) {
+    lines.push(`- **${tool.name}**: ${tool.description}`);
   }
   lines.push('');
-  lines.push(labels.yourTurn);
+  lines.push('What do you do?');
 
   return lines.join('\n');
 }

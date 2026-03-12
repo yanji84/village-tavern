@@ -4,12 +4,13 @@ import {
   recoverParticipants, buildSSEInitPayload, isEventForWorld,
   memoryFilename, hasFastTick,
 } from '../adapter.js';
-import { loadWorld } from 'openclaw-village-hub/world-loader';
+import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const worldConfig = loadWorld(join(__dirname, '../schema.json'));
+const raw = JSON.parse(readFileSync(join(__dirname, '../schema.json'), 'utf-8'));
+const worldConfig = { raw };
 
 describe('tavern adapter metadata', () => {
   it('exports correct memoryFilename', () => {
