@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { initState, buildScene, processAction, onJoin, onLeave } from '../adapter.js';
+import { initState, buildScene, tools, onJoin, onLeave } from '../adapter.js';
 
 describe('initState', () => {
   it('returns world-specific state only', () => {
@@ -35,7 +35,7 @@ describe('buildScene', () => {
   });
 });
 
-describe('processAction', () => {
+describe('tools', () => {
   const bot = { name: 'alice', displayName: 'Alice' };
   const state = {
     _bots: [
@@ -45,33 +45,28 @@ describe('processAction', () => {
     log: [],
   };
 
-  it('processes say', () => {
-    const result = processAction(bot, { tool: 'tavern_say', params: { message: 'hi' } }, state);
+  it('tavern_say returns say entry', () => {
+    const result = tools.tavern_say(bot, { message: 'hi' }, state);
     expect(result).toEqual({ action: 'say', message: 'hi' });
   });
 
-  it('processes toast', () => {
-    const result = processAction(bot, { tool: 'tavern_toast', params: { message: 'cheers' } }, state);
+  it('tavern_toast returns toast entry', () => {
+    const result = tools.tavern_toast(bot, { message: 'cheers' }, state);
     expect(result).toEqual({ action: 'toast', message: 'cheers' });
   });
 
-  it('processes arm_wrestle with existing target', () => {
-    const result = processAction(bot, { tool: 'tavern_arm_wrestle', params: { target: 'bob' } }, state);
+  it('tavern_arm_wrestle with existing target', () => {
+    const result = tools.tavern_arm_wrestle(bot, { target: 'bob' }, state);
     expect(result.action).toBe('arm_wrestle');
     expect(result.target).toBe('bob');
     expect(result.message).toContain('Alice');
     expect(result.message).toContain('Bob');
   });
 
-  it('handles arm_wrestle with missing target', () => {
-    const result = processAction(bot, { tool: 'tavern_arm_wrestle', params: { target: 'nobody' } }, state);
+  it('tavern_arm_wrestle with missing target', () => {
+    const result = tools.tavern_arm_wrestle(bot, { target: 'nobody' }, state);
     expect(result.action).toBe('say');
     expect(result.message).toContain("don't seem to be here");
-  });
-
-  it('returns null for unknown action', () => {
-    const result = processAction(bot, { tool: 'unknown', params: {} }, state);
-    expect(result).toBeNull();
   });
 });
 

@@ -48,45 +48,29 @@ export function buildScene(bot, allBots, state) {
   return lines.join('\n');
 }
 
-// --- Actions (required) ---
+// --- Tools (required) — one handler per toolSchema entry ---
 
-export function processAction(bot, action, state) {
-  if (action.tool === 'tavern_say' && action.params?.message) {
-    return {
-      action: 'say',
-      message: action.params.message,
-    };
-  }
+export const tools = {
+  tavern_say(bot, params, state) {
+    return { action: 'say', message: params.message };
+  },
 
-  if (action.tool === 'tavern_toast' && action.params?.message) {
-    return {
-      action: 'toast',
-      message: action.params.message,
-    };
-  }
+  tavern_toast(bot, params, state) {
+    return { action: 'toast', message: params.message };
+  },
 
-  if (action.tool === 'tavern_arm_wrestle' && action.params?.target) {
-    const target = action.params.target;
-    const targetBot = state._bots.find(b => b.name === target);
+  tavern_arm_wrestle(bot, params, state) {
+    const targetBot = state._bots.find(b => b.name === params.target);
     if (!targetBot) {
-      return {
-        action: 'say',
-        message: `*looks around for ${target}* ...they don't seem to be here.`,
-      };
+      return { action: 'say', message: `*looks around for ${params.target}* ...they don't seem to be here.` };
     }
     const win = Math.random() > 0.5;
     const message = win
       ? `**${bot.displayName}** challenges **${targetBot.displayName}** to arm-wrestle — and wins! The table shakes as ${bot.displayName} slams ${targetBot.displayName}'s hand down.`
       : `**${bot.displayName}** challenges **${targetBot.displayName}** to arm-wrestle — and loses! ${targetBot.displayName} grins and flexes.`;
-    return {
-      action: 'arm_wrestle',
-      message,
-      target,
-    };
-  }
-
-  return null;
-}
+    return { action: 'arm_wrestle', message, target: params.target };
+  },
+};
 
 // --- Hooks (optional) ---
 
