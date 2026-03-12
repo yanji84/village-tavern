@@ -1,8 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  initState, loadState, advanceClock, joinBot, removeBot,
-  recoverParticipants, buildSSEInitPayload, isEventForWorld,
-  memoryFilename, hasFastTick,
+  initState, loadState, onJoin, onLeave, tick,
 } from '../adapter.js';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -11,16 +9,6 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const raw = JSON.parse(readFileSync(join(__dirname, '../schema.json'), 'utf-8'));
 const worldConfig = { raw };
-
-describe('tavern adapter metadata', () => {
-  it('exports correct memoryFilename', () => {
-    expect(memoryFilename).toBe('tavern.md');
-  });
-
-  it('has no fast tick', () => {
-    expect(hasFastTick).toBe(false);
-  });
-});
 
 describe('initState', () => {
   it('returns valid initial state with required fields', () => {
@@ -35,14 +23,14 @@ describe('initState', () => {
 
 describe('loadState', () => {
   it('loads saved state', () => {
-    const raw = {
+    const saved = {
       log: [{ action: 'say', message: 'hello' }],
       clock: { tick: 5 },
       bots: ['alice'],
       villageCosts: { alice: 0.1 },
       remoteParticipants: { alice: { displayName: 'Alice' } },
     };
-    const state = loadState(raw, worldConfig);
+    const state = loadState(saved, worldConfig);
     expect(state.log).toHaveLength(1);
     expect(state.clock.tick).toBe(5);
     expect(state.bots).toEqual(['alice']);
@@ -56,105 +44,65 @@ describe('loadState', () => {
   });
 });
 
-describe('advanceClock', () => {
-  it('increments tick', () => {
-    const state = { clock: { tick: 3 } };
-    advanceClock(state);
-    expect(state.clock.tick).toBe(4);
-  });
-});
-
-describe('joinBot', () => {
-  it('adds bot to state and returns join event', async () => {
+describe('onJoin', () => {
+  it('appends to log and returns join event', async () => {
     const state = initState(worldConfig);
-    const { events } = await joinBot(state, 'bob', 'Bob', worldConfig);
-    expect(state.bots).toContain('bob');
+    state.bots.push('bob');
+    const events = await onJoin(state, 'bob', 'Bob', worldConfig);
     expect(state.log).toHaveLength(1);
     expect(state.log[0].action).toBe('join');
     expect(events).toHaveLength(1);
     expect(events[0].type).toBe('tavern_join');
   });
+});
 
-  it('does not duplicate on re-join', async () => {
+describe('onLeave', () => {
+  it('appends to log and returns leave event', () => {
     const state = initState(worldConfig);
-    await joinBot(state, 'bob', 'Bob', worldConfig);
-    await joinBot(state, 'bob', 'Bob', worldConfig);
-    expect(state.bots.filter(b => b === 'bob')).toHaveLength(1);
+    const events = onLeave(state, 'bob', 'Bob');
+    expect(state.log).toHaveLength(1);
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('tavern_leave');
   });
 });
 
-describe('removeBot', () => {
-  it('removes bot and broadcasts leave event', async () => {
+describe('tick', () => {
+  it('skips when no participants', async () => {
     const state = initState(worldConfig);
-    await joinBot(state, 'bob', 'Bob', worldConfig);
-    const broadcast = vi.fn();
-    removeBot(state, 'bob', 'Bob', broadcast);
-    expect(state.bots).not.toContain('bob');
-    expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'tavern_leave' }));
-  });
-
-  it('no-ops for unknown bot', () => {
-    const state = initState(worldConfig);
-    const broadcast = vi.fn();
-    removeBot(state, 'unknown', 'Unknown', broadcast);
-    expect(broadcast).not.toHaveBeenCalled();
-  });
-});
-
-describe('recoverParticipants', () => {
-  it('rebuilds participants from state', async () => {
-    const state = {
-      bots: ['alice', 'bob'],
-      remoteParticipants: {
-        alice: { displayName: 'Alice' },
-        bob: { displayName: 'Bob' },
-      },
-    };
-    const participants = new Map();
-    const toRemove = await recoverParticipants(state, participants);
-    expect(toRemove).toEqual([]);
-    expect(participants.size).toBe(2);
-    expect(participants.get('alice').displayName).toBe('Alice');
-  });
-
-  it('marks bots without remoteParticipants entry for removal', async () => {
-    const state = {
-      bots: ['alice', 'orphan'],
-      remoteParticipants: { alice: { displayName: 'Alice' } },
-    };
-    const participants = new Map();
-    const toRemove = await recoverParticipants(state, participants);
-    expect(toRemove).toEqual(['orphan']);
-    expect(participants.size).toBe(1);
-  });
-});
-
-describe('buildSSEInitPayload', () => {
-  it('returns correct init payload', async () => {
-    const state = initState(worldConfig);
-    await joinBot(state, 'alice', 'Alice', worldConfig);
-    const participants = new Map([['alice', { displayName: 'Alice' }]]);
-    const payload = buildSSEInitPayload(state, participants, worldConfig, {
-      nextTickAt: 1000, tickIntervalMs: 120000,
+    const saveState = vi.fn();
+    await tick({
+      state, worldConfig,
+      participants: new Map(),
+      sendSceneRemote: vi.fn(),
+      accumulateResponseCost: vi.fn(),
+      broadcastEvent: vi.fn(),
+      saveState,
     });
-    expect(payload.type).toBe('init');
-    expect(payload.worldType).toBe('social');
-    expect(payload.world.id).toBe('tavern');
-    expect(payload.bots).toHaveLength(1);
-    expect(payload.bots[0].displayName).toBe('Alice');
-  });
-});
-
-describe('isEventForWorld', () => {
-  it('matches tavern events', () => {
-    expect(isEventForWorld({ type: 'tavern_say' })).toBe(true);
-    expect(isEventForWorld({ type: 'tavern_join' })).toBe(true);
-    expect(isEventForWorld({ type: 'tavern_arm_wrestle' })).toBe(true);
-    expect(isEventForWorld({ type: 'tick_start' })).toBe(true);
+    expect(saveState).toHaveBeenCalled();
   });
 
-  it('rejects non-tavern events', () => {
-    expect(isEventForWorld({ type: 'campfire_say' })).toBe(false);
-    expect(isEventForWorld({ type: 'unknown' })).toBe(false);
+  it('sends scene and processes actions', async () => {
+    const state = initState(worldConfig);
+    state.bots.push('alice');
+    state.remoteParticipants.alice = { displayName: 'Alice' };
+
+    const broadcastEvent = vi.fn();
+    const sendSceneRemote = vi.fn().mockResolvedValue({
+      actions: [{ tool: 'tavern_say', params: { message: 'hello!' } }],
+    });
+
+    await tick({
+      state, worldConfig,
+      participants: new Map([['alice', { displayName: 'Alice' }]]),
+      sendSceneRemote,
+      accumulateResponseCost: vi.fn(),
+      broadcastEvent,
+      saveState: vi.fn(),
+    });
+
+    expect(sendSceneRemote).toHaveBeenCalledWith('alice', 'tavern', expect.objectContaining({ scene: expect.any(String) }));
+    expect(state.log).toHaveLength(1);
+    expect(state.log[0].action).toBe('say');
+    expect(broadcastEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'tavern_say' }));
   });
 });
