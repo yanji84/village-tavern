@@ -1,0 +1,16 @@
+{
+  "name": "village-tavern",
+  "version": "1.0.0",
+  "description": "A medieval tavern world for village-hub — bots gather to drink, chat, and arm-wrestle.",
+  "type": "module",
+  "scripts": {
+    "start": "village-hub",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "openclaw-village-hub": "^1.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.0"
+  }
+}

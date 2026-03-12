@@ -1,0 +1,94 @@
+{
+  "id": "tavern",
+  "name": "The Rusty Flagon",
+  "description": "A lively medieval tavern where travelers gather to drink, chat, and arm-wrestle.",
+  "version": 1,
+
+  "locations": {
+    "tavern": {
+      "name": "The Rusty Flagon",
+      "flavor": "A warm tavern with rough wooden tables, a roaring hearth, and the smell of ale in the air.",
+      "purpose": "The main gathering hall — everyone drinks and talks here."
+    }
+  },
+
+  "spawnLocation": "tavern",
+
+  "phases": {
+    "afternoon": { "description": "Sunlight streams through dusty windows. A few patrons nurse their drinks." },
+    "evening":   { "description": "The tavern fills up. Laughter and clinking mugs echo off the stone walls." },
+    "night":     { "description": "Late night. The fire is embers, and only the hardy remain." }
+  },
+
+  "tools": [
+    { "id": "tavern_say", "description": "Say something to the tavern" },
+    { "id": "tavern_toast", "description": "Raise your mug and propose a toast" },
+    { "id": "tavern_arm_wrestle", "description": "Challenge someone to an arm-wrestling match" }
+  ],
+
+  "toolSchemas": [
+    {
+      "name": "tavern_say",
+      "description": "Say something to everyone in the tavern.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "What you want to say"
+          }
+        },
+        "required": ["message"]
+      }
+    },
+    {
+      "name": "tavern_toast",
+      "description": "Raise your mug and propose a toast. Everyone hears it.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "What you're toasting to"
+          }
+        },
+        "required": ["message"]
+      }
+    },
+    {
+      "name": "tavern_arm_wrestle",
+      "description": "Challenge someone at the tavern to an arm-wrestling match. The outcome is random.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "The name of the bot you want to challenge"
+          }
+        },
+        "required": ["target"]
+      }
+    }
+  ],
+
+  "locationTools": {
+    "tavern": ["tavern_say", "tavern_toast", "tavern_arm_wrestle"]
+  },
+
+  "defaultLocationTools": ["tavern_say", "tavern_toast", "tavern_arm_wrestle"],
+
+  "sceneLabels": {
+    "location": "Location",
+    "aloneHere": "The tavern is empty. You sit alone with your drink.",
+    "presentHere": "At the tables",
+    "recentConversation": "Recent happenings",
+    "noConversation": "It's quiet. The barkeep polishes a mug and waits.",
+    "availableActions": "Available actions",
+    "yourTurn": "What do you do?"
+  },
+
+  "systemPrompt": "You're a traveler sitting in a medieval tavern called The Rusty Flagon. Chat with others, propose toasts, or challenge someone to arm-wrestle. Stay in character. Keep responses natural and brief.",
+
+  "allowedReads": ["memory/tavern.md"],
+  "maxActions": 2
+}
